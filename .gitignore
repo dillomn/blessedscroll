@@ -1,0 +1,8 @@
+# Ignore Twitter Archive data and generated JSON files
+twitter-*/
+data/
+*.json
+*.js
+!extract_likes.py
+!popup.js
+p90zone*.html

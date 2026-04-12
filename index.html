@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>BlessedScroll</title>
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #video-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        video {
+            max-width: 100%;
+            max-height: 100vh;
+            outline: none;
+            display: none;
+        }
+
+        /* UI Overlays */
+        #header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #0f0;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 0 10px rgba(0,255,0,0.2);
+        }
+        #header:hover { background: rgba(0, 20, 0, 0.9); }
+        #header h1 { margin: 0; font-size: 20px; letter-spacing: 2px; text-shadow: 0 0 5px #0f0; }
+        #header p { margin: 5px 0 0; font-size: 12px; color: #aaa; }
+
+        #post-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #0f0;
+            max-width: 400px;
+            display: none;
+            box-shadow: 0 0 10px rgba(0,255,0,0.2);
+        }
+        
+        #post-text { font-size: 14px; color: #fff; margin-bottom: 10px; word-wrap: break-word; }
+        #post-date { font-size: 10px; color: #888; margin-bottom: 5px; }
+        #post-stats { font-size: 12px; color: #0f0; font-weight: bold; margin-bottom: 10px; }
+        #post-link a { color: #00aaff; text-decoration: none; font-size: 12px; }
+        #post-link a:hover { text-decoration: underline; }
+
+        /* Action Buttons */
+        #actions {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px 15px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #0f0; color: #000; }
+        .btn.liked { background: #ff0055; color: #fff; border-color: #ff0055; box-shadow: 0 0 10px #ff0055; }
+
+        #loading {
+            position: absolute;
+            font-size: 20px;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    </style>
+</head>
+<body>
+
+    <!-- Top Left Header (Click to Reload) -->
+    <div id="header" onclick="loadRandomVideo()">
+        <h1>[ BlessedScroll ]</h1>
+        <p>Press <strong>[R]</strong> or click here to roll.</p>
+    </div>
+
+    <!-- Top Right Actions -->
+    <div id="actions">
+        <button id="like-btn" class="btn" onclick="toggleSuperLike()">♥ SUPER LIKE</button>
+        <button class="btn" onclick="exportSuperLikes()">⬇ EXPORT LIKES</button>
+    </div>
+
+    <!-- Bottom Left Metadata Overlay -->
+    <div id="post-info">
+        <div id="post-date"></div>
+        <div id="post-text"></div>
+        <div id="post-stats"></div>
+        <div id="post-link"></div>
+    </div>
+
+    <div id="loading">[ BOOTING ARCHIVE... ]</div>
+    
+    <div id="video-container">
+        <video id="meme-video" controls playsinline muted></video>
+    </div>
+
+    <script>
+        let tweetIds = [];
+        let currentTweetData = null;
+        let superLikes = JSON.parse(localStorage.getItem('blessed_super_likes')) || [];
+        
+        const videoPlayer = document.getElementById('meme-video');
+        const loading = document.getElementById('loading');
+        const postInfo = document.getElementById('post-info');
+        const likeBtn = document.getElementById('like-btn');
+        let isLoading = false;
+
+        // Init: Unmute after first click/key
+        const unlockAudio = () => { videoPlayer.muted = false; };
+        document.body.addEventListener('click', unlockAudio, { once: true });
+        document.body.addEventListener('keydown', unlockAudio, { once: true });
+
+        // Load the archive JSON
+        fetch('tweets.json')
+            .then(res => res.json())
+            .then(data => {
+                tweetIds = data;
+                loadRandomVideo();
+            })
+            .catch(err => {
+                loading.innerText = "[ ERROR: COULD NOT LOAD TWEETS.JSON ]";
+                console.error(err);
+            });
+
+        function updateUI(data) {
+            currentTweetData = data;
+            
+            // Format stats
+            const likes = data.likes > 999 ? (data.likes/1000).toFixed(1)+'k' : data.likes;
+            const rts = data.retweets > 999 ? (data.retweets/1000).toFixed(1)+'k' : data.retweets;
+            const replies = data.replies > 999 ? (data.replies/1000).toFixed(1)+'k' : data.replies;
+            
+            // Populate Info Box
+            document.getElementById('post-date').innerText = new Date(data.date_epoch * 1000).toLocaleString();
+            document.getElementById('post-text').innerText = data.text || "(No caption)";
+            document.getElementById('post-stats').innerText = `♥ ${likes} | 🔁 ${rts} | 💬 ${replies}`;
+            document.getElementById('post-link').innerHTML = `<a href="${data.tweetURL}" target="_blank">↗ Open Original on Twitter</a>`;
+            postInfo.style.display = 'block';
+
+            // Check if already super-liked
+            if (superLikes.includes(data.tweetID)) {
+                likeBtn.classList.add('liked');
+                likeBtn.innerText = "♥ SUPER LIKED";
+            } else {
+                likeBtn.classList.remove('liked');
+                likeBtn.innerText = "♡ SUPER LIKE";
+            }
+        }
+
+        function toggleSuperLike() {
+            if (!currentTweetData) return;
+            const id = currentTweetData.tweetID;
+
+            if (superLikes.includes(id)) {
+                superLikes = superLikes.filter(item => item !== id);
+                likeBtn.classList.remove('liked');
+                likeBtn.innerText = "♡ SUPER LIKE";
+            } else {
+                superLikes.push(id);
+                likeBtn.classList.add('liked');
+                likeBtn.innerText = "♥ SUPER LIKED";
+            }
+            
+            localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
+        }
+
+        function exportSuperLikes() {
+            if (superLikes.length === 0) {
+                alert("You haven't super-liked anything yet!");
+                return;
+            }
+            
+            // Generate simple text file of the links
+            const urls = superLikes.map(id => `https://twitter.com/i/status/${id}`).join('\\n');
+            const blob = new Blob([urls], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'blessed_super_likes.txt';
+            a.click();
+        }
+
+        async function loadRandomVideo() {
+            if (isLoading || tweetIds.length === 0) return;
+            isLoading = true;
+            
+            loading.innerText = "[ SCANNING ARCHIVE... ]";
+            loading.style.display = 'block';
+            videoPlayer.style.display = 'none';
+            postInfo.style.display = 'none';
+            videoPlayer.pause();
+            videoPlayer.removeAttribute('src');
+
+            let foundVideo = false;
+
+            while (!foundVideo) {
+                const randomIndex = Math.floor(Math.random() * tweetIds.length);
+                const selectedId = tweetIds[randomIndex];
+
+                try {
+                    const response = await fetch(`https://api.vxtwitter.com/Twitter/status/${selectedId}`);
+                    if (!response.ok) continue;
+
+                    const data = await response.json();
+                    
+                    if (data.hasMedia && data.media_extended && data.media_extended.length > 0) {
+                        const media = data.media_extended[0];
+                        if ((media.type === 'video' || media.type === 'gif') && media.url.includes('.mp4')) {
+                            videoPlayer.src = media.url;
+                            videoPlayer.load();
+                            updateUI(data);
+                            foundVideo = true;
+                        }
+                    }
+                } catch (err) {
+                    console.error("API error, retrying...", err);
+                }
+            }
+
+            loading.style.display = 'none';
+            videoPlayer.style.display = 'block';
+            videoPlayer.play().catch(e => console.log("Autoplay prevented:", e));
+            isLoading = false;
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key.toLowerCase() === 'r') {
+                loadRandomVideo();
+            }
+        });
+    </script>
+</body>
+</html>
