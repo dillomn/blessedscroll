@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  p90zone:
+    image: python:3.11-slim
+    container_name: p90zone
+    ports:
+      - "9090:80"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: python3 server.py
+    restart: unless-stopped

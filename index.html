@@ -119,7 +119,7 @@
     <!-- Top Right Actions -->
     <div id="actions">
         <button id="like-btn" class="btn" onclick="toggleSuperLike()">♥ SUPER LIKE</button>
-        <button class="btn" onclick="exportSuperLikes()">⬇ EXPORT LIKES</button>
+
     </div>
 
     <!-- Bottom Left Metadata Overlay -->
@@ -206,11 +206,7 @@
             localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
         }
 
-        function exportSuperLikes() {
-            if (superLikes.length === 0) {
-                alert("You haven't super-liked anything yet!");
-                return;
-            }
+        // exportSuperLikes removed
             
             // Generate simple text file of the links
             const urls = superLikes.map(id => `https://twitter.com/i/status/${id}`).join('\\n');
