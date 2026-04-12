@@ -135,6 +135,11 @@
         <video id="meme-video" controls playsinline muted></video>
     </div>
 
+    <!-- Initialize the YTD object BEFORE loading Twitter's script -->
+    <script>
+        window.YTD = { like: {} };
+    </script>
+    
     <!-- Load the raw Twitter archive data file directly -->
     <script src="like.js"></script>
 
