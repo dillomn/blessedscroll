@@ -238,6 +238,11 @@
             videoPlayer.pause();
             videoPlayer.removeAttribute('src');
 
+            // Instantly reset the Like button for snappy UI
+            likeBtn.classList.remove('liked');
+            likeBtn.innerText = "♡ SUPER LIKE";
+            currentTweetData = null; // Prevent accidental likes during load
+
             let foundVideo = false;
 
             while (!foundVideo) {
