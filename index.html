@@ -159,8 +159,8 @@
             tweetIds = window.YTD.like.part0.map(item => item.like.tweetId);
             loadRandomVideo();
         } else {
-            loading.innerText = "[ ERROR: like.js NOT FOUND. PLACE like.js IN FOLDER ]";
-            console.error("Missing like.js in the root directory!");
+            loading.innerText = "[ ERROR: EXTRACT YOUR TWITTER ARCHIVE FOLDER HERE ]";
+            console.error("Missing twitter-*/data/like.js!");
         }
 
         function updateUI(data) {
