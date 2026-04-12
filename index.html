@@ -198,8 +198,21 @@
             const id = currentTweetData.tweetID;
             const url = currentTweetData.tweetURL;
 
-            // If not already liked in this session
-            if (!superLikes.includes(id)) {
+            if (superLikes.includes(id)) {
+                // UNLIKE (Remove)
+                superLikes = superLikes.filter(item => item !== id);
+                likeBtn.classList.remove('liked');
+                likeBtn.innerText = "♡ SUPER LIKE";
+                localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
+
+                // Send the URL to the server to be removed from the txt file
+                fetch('/superlike', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'remove', url: url })
+                }).catch(err => console.error("Failed to remove from server file", err));
+            } else {
+                // LIKE (Add)
                 superLikes.push(id);
                 likeBtn.classList.add('liked');
                 likeBtn.innerText = "♥ SUPER LIKED";
@@ -209,7 +222,7 @@
                 fetch('/superlike', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
+                    body: JSON.stringify({ action: 'add', url: url })
                 }).catch(err => console.error("Failed to save to server file", err));
             }
         }

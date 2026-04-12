@@ -36,12 +36,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 data = json.loads(post_data)
                 tweet_url = data.get('url')
+                action = data.get('action', 'add')
                 
                 if tweet_url:
-                    # Append to server-side file
-                    with open('super_likes.txt', 'a') as f:
-                        f.write(tweet_url + '\n')
-                    
+                    if action == 'add':
+                        # Append to server-side file
+                        with open('super_likes.txt', 'a') as f:
+                            f.write(tweet_url + '\n')
+                    elif action == 'remove':
+                        # Remove from server-side file
+                        if os.path.exists('super_likes.txt'):
+                            with open('super_likes.txt', 'r') as f:
+                                lines = f.readlines()
+                            with open('super_likes.txt', 'w') as f:
+                                for line in lines:
+                                    if line.strip() != tweet_url.strip():
+                                        f.write(line)
+
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
