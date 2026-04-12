@@ -119,7 +119,6 @@
     <!-- Top Right Actions -->
     <div id="actions">
         <button id="like-btn" class="btn" onclick="toggleSuperLike()">♥ SUPER LIKE</button>
-
     </div>
 
     <!-- Bottom Left Metadata Overlay -->
@@ -135,6 +134,9 @@
     <div id="video-container">
         <video id="meme-video" controls playsinline muted></video>
     </div>
+
+    <!-- Load the raw Twitter archive data file directly -->
+    <script src="like.js"></script>
 
     <script>
         let tweetIds = [];
@@ -152,17 +154,14 @@
         document.body.addEventListener('click', unlockAudio, { once: true });
         document.body.addEventListener('keydown', unlockAudio, { once: true });
 
-        // Load the archive JSON
-        fetch('tweets.json')
-            .then(res => res.json())
-            .then(data => {
-                tweetIds = data;
-                loadRandomVideo();
-            })
-            .catch(err => {
-                loading.innerText = "[ ERROR: COULD NOT LOAD TWEETS.JSON ]";
-                console.error(err);
-            });
+        // Load the archive directly from the global variable created by like.js
+        if (typeof window.YTD !== 'undefined' && window.YTD.like && window.YTD.like.part0) {
+            tweetIds = window.YTD.like.part0.map(item => item.like.tweetId);
+            loadRandomVideo();
+        } else {
+            loading.innerText = "[ ERROR: like.js NOT FOUND. PLACE like.js IN FOLDER ]";
+            console.error("Missing like.js in the root directory!");
+        }
 
         function updateUI(data) {
             currentTweetData = data;
@@ -179,7 +178,7 @@
             document.getElementById('post-link').innerHTML = `<a href="${data.tweetURL}" target="_blank">↗ Open Original on Twitter</a>`;
             postInfo.style.display = 'block';
 
-            // Check if already super-liked
+            // Check if already super-liked locally
             if (superLikes.includes(data.tweetID)) {
                 likeBtn.classList.add('liked');
                 likeBtn.innerText = "♥ SUPER LIKED";
@@ -192,29 +191,22 @@
         function toggleSuperLike() {
             if (!currentTweetData) return;
             const id = currentTweetData.tweetID;
+            const url = currentTweetData.tweetURL;
 
-            if (superLikes.includes(id)) {
-                superLikes = superLikes.filter(item => item !== id);
-                likeBtn.classList.remove('liked');
-                likeBtn.innerText = "♡ SUPER LIKE";
-            } else {
+            // If not already liked in this session
+            if (!superLikes.includes(id)) {
                 superLikes.push(id);
                 likeBtn.classList.add('liked');
                 likeBtn.innerText = "♥ SUPER LIKED";
-            }
-            
-            localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
-        }
+                localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
 
-        // exportSuperLikes removed
-            
-            // Generate simple text file of the links
-            const urls = superLikes.map(id => `https://twitter.com/i/status/${id}`).join('\\n');
-            const blob = new Blob([urls], { type: 'text/plain' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'blessed_super_likes.txt';
-            a.click();
+                // Send the URL to the server to be appended to the txt file
+                fetch('/superlike', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                }).catch(err => console.error("Failed to save to server file", err));
+            }
         }
 
         async function loadRandomVideo() {
