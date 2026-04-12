@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>BlessedScroll | Super Likes</title>
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+        }
+
+        #header {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #0f0;
+            margin-bottom: 20px;
+            box-shadow: 0 0 10px rgba(0,255,0,0.2);
+        }
+        #header h1 { margin: 0; font-size: 24px; text-shadow: 0 0 5px #0f0; }
+        
+        .nav-btn {
+            display: inline-block;
+            margin-top: 10px;
+            text-decoration: none;
+            background: rgba(0, 0, 0, 0.7);
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .nav-btn:hover { background: #0f0; color: #000; }
+
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            padding-bottom: 50px;
+        }
+
+        .card {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #0f0; }
+
+        .card video {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            background: #000;
+        }
+
+        .card-info {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex-grow: 1;
+        }
+        
+        .card-text {
+            color: #ccc;
+            font-size: 13px;
+            margin-bottom: 15px;
+            word-wrap: break-word;
+        }
+
+        .btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 13px;
+            text-align: center;
+        }
+        .btn.liked { background: #ff0055; color: #fff; border-color: #ff0055; }
+        .btn.liked:hover { background: #000; color: #ff0055; }
+
+        #loading { text-align: center; font-size: 20px; animation: blink 1s infinite; padding: 50px; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <h1>[ LIKED MEME ARCHIVE ]</h1>
+        <a href="index.html" class="nav-btn">← BACK TO SCROLL</a>
+    </div>
+
+    <div id="loading">[ FETCHING ARCHIVE DATA... ]</div>
+    <div id="grid"></div>
+
+    <script>
+        const loading = document.getElementById('loading');
+        const grid = document.getElementById('grid');
+        
+        // Sync local storage with server just in case
+        let superLikes = JSON.parse(localStorage.getItem('blessed_super_likes')) || [];
+
+        async function loadLikes() {
+            try {
+                const res = await fetch('/get_likes');
+                const urls = await res.json();
+                
+                if (urls.length === 0) {
+                    loading.innerText = "[ NO SUPER LIKES FOUND YET ]";
+                    loading.style.animation = "none";
+                    return;
+                }
+
+                loading.style.display = 'none';
+
+                for (const url of urls) {
+                    const id = url.split('/').pop();
+                    
+                    try {
+                        const vRes = await fetch(`https://api.vxtwitter.com/Twitter/status/${id}`);
+                        if (!vRes.ok) continue;
+                        
+                        const data = await vRes.json();
+                        
+                        if (data.hasMedia && data.media_extended && data.media_extended.length > 0) {
+                            const media = data.media_extended[0];
+                            if ((media.type === 'video' || media.type === 'gif') && media.url.includes('.mp4')) {
+                                
+                                const card = document.createElement('div');
+                                card.className = 'card';
+                                
+                                let caption = data.text || "(No caption)";
+                                if (caption.length > 80) caption = caption.substring(0, 80) + '...';
+
+                                card.innerHTML = `
+                                    <video src="${media.url}" poster="${media.thumbnail_url || ''}" controls playsinline preload="none"></video>
+                                    <div class="card-info">
+                                        <div class="card-text">${caption}</div>
+                                        <button class="btn liked" onclick="unlike(this, '${id}', '${url}')">♥ UNLIKE</button>
+                                    </div>
+                                `;
+                                grid.appendChild(card);
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Failed to load tweet ${id}`, e);
+                    }
+                }
+                
+                if (grid.children.length === 0) {
+                    grid.innerHTML = "<h2 style='text-align:center; width:100%;'>No active videos found. They may have been deleted by the author.</h2>";
+                }
+            } catch (err) {
+                loading.innerText = "[ ERROR CONNECTING TO SERVER ]";
+                console.error(err);
+            }
+        }
+
+        async function unlike(btnElement, id, url) {
+            // Update UI instantly
+            const card = btnElement.closest('.card');
+            card.style.opacity = '0.3';
+            btnElement.innerText = "REMOVING...";
+            btnElement.disabled = true;
+
+            // Remove from local storage
+            superLikes = superLikes.filter(item => item !== id);
+            localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
+
+            // Remove from server
+            try {
+                await fetch('/superlike', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'remove', url: url })
+                });
+                // Remove from DOM
+                card.remove();
+            } catch (e) {
+                console.error("Failed to unlike on server", e);
+                btnElement.innerText = "ERROR";
+            }
+        }
+
+        loadLikes();
+    </script>
+</body>
+</html>

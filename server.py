@@ -6,6 +6,18 @@ import glob
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
+        # API Endpoint to fetch current likes
+        if self.path == '/get_likes':
+            urls = []
+            if os.path.exists('super_likes.txt'):
+                with open('super_likes.txt', 'r') as f:
+                    urls = [line.strip() for line in f.readlines() if line.strip()]
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(urls).encode())
+            return
+            
         # Dynamically serve like.js from the messy Twitter archive folder!
         if self.path == '/like.js':
             like_files = glob.glob('twitter-*/data/like.js')
