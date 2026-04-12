@@ -1,6 +1,6 @@
 # BlessedScroll ☥
 
-A self-hosted, pure-video meme slot machine built from your personal Twitter/X Data Archive. 
+A self-hosted, pure-video video slot machine built from your personal Twitter/X Data Archive. 
 
 Because Twitter restricts standard API scraping to your last ~3,200 likes, the only way to relive a decade of liked videos is to use your official Twitter Data Archive.
 

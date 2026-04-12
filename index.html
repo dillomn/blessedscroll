@@ -133,7 +133,7 @@
     <div id="loading">[ BOOTING ARCHIVE... ]</div>
     
     <div id="video-container">
-        <video id="meme-video" controls playsinline muted></video>
+        <video id="video-video" controls playsinline muted></video>
     </div>
 
     <!-- Initialize the YTD object BEFORE loading Twitter's script -->
@@ -149,7 +149,7 @@
         let currentTweetData = null;
         let superLikes = JSON.parse(localStorage.getItem('blessed_super_likes')) || [];
         
-        const videoPlayer = document.getElementById('meme-video');
+        const videoPlayer = document.getElementById('video-video');
         const loading = document.getElementById('loading');
         const postInfo = document.getElementById('post-info');
         const likeBtn = document.getElementById('like-btn');
