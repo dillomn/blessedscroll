@@ -3,6 +3,9 @@ import socketserver
 import json
 import os
 import glob
+import re
+import urllib.request
+import urllib.error
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -18,6 +21,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(urls).encode())
             return
             
+        # Proxy tweet lookups: vxtwitter now serves a Cloudflare challenge to
+        # browser user agents, so the browser can't call it directly.
+        m = re.fullmatch(r'/tweet/(\d{1,25})', self.path)
+        if m:
+            req = urllib.request.Request(
+                f'https://api.vxtwitter.com/Twitter/status/{m.group(1)}',
+                headers={'User-Agent': 'BlessedScroll/1.0'})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    status, body = r.status, r.read()
+            except urllib.error.HTTPError as e:
+                status, body = e.code, b'{}'
+            except Exception as e:
+                print("Error proxying tweet:", e)
+                status, body = 502, b'{}'
+            self.send_response(status)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         # Dynamically serve like.js from the messy Twitter archive folder!
         if self.path == '/like.js':
             like_files = glob.glob('twitter-*/data/like.js')
@@ -81,5 +105,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 PORT = 80
 print(f"BlessedScroll Server booting on port {PORT}...")
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
+socketserver.ThreadingTCPServer.allow_reuse_address = True
+socketserver.ThreadingTCPServer.daemon_threads = True
+with socketserver.ThreadingTCPServer(("", PORT), Handler) as httpd:
     httpd.serve_forever()

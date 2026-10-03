@@ -251,8 +251,8 @@
                 const selectedId = tweetIds[randomIndex];
 
                 try {
-                    const response = await fetch(`https://api.vxtwitter.com/Twitter/status/${selectedId}`);
-                    if (!response.ok) continue;
+                    const response = await fetch(`/tweet/${selectedId}`);
+                    if (!response.ok) { await new Promise(r => setTimeout(r, 300)); continue; }
 
                     const data = await response.json();
                     
@@ -267,6 +267,7 @@
                     }
                 } catch (err) {
                     console.error("API error, retrying...", err);
+                    await new Promise(r => setTimeout(r, 1000));
                 }
             }
 

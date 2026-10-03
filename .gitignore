@@ -6,3 +6,4 @@ data/
 !extract_likes.py
 !popup.js
 p90zone*.html
+__pycache__/
