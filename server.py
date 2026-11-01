@@ -1,111 +1,413 @@
+"""BlessedScroll server.
+
+- Reads the Twitter archive's like.js once at startup (the browser no longer
+  downloads the 6.6 MB file).
+- A background worker pool looks tweets up via api.fxtwitter.com (falling back
+  to api.vxtwitter.com, each politely paced with 429 cooldowns) and keeps a
+  small queue of ready-to-play videos, so /random answers instantly.
+- Lookups are cached to data/cache.json (videos and non-videos), so the archive
+  gets cheaper to roll the more it's used.
+- /dl/<id> streams the mp4 back with Content-Disposition: attachment, so iOS
+  Safari offers a real download (cross-origin <a download> is ignored there).
+- Only an explicit set of static files is served; the Twitter archive folder
+  (DMs etc.) is NOT reachable over HTTP.
+"""
+import collections
+import glob
 import http.server
-import socketserver
 import json
 import os
-import glob
+import random
 import re
-import urllib.request
+import socketserver
+import threading
+import time
 import urllib.error
+import urllib.request
 
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        # API Endpoint to fetch current likes
-        if self.path == '/get_likes':
-            urls = []
-            if os.path.exists('super_likes.txt'):
-                with open('super_likes.txt', 'r') as f:
-                    urls = [line.strip() for line in f.readlines() if line.strip()]
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(urls).encode())
+PORT = int(os.environ.get('PORT', '80'))
+DATA_DIR = 'data'
+CACHE_FILE = os.path.join(DATA_DIR, 'cache.json')
+LIKES_FILE = 'super_likes.txt'
+UA = 'BlessedScroll/1.0'
+POOL_TARGET = 10
+WORKERS = 3
+STATIC = {
+    '/': ('index.html', 'text/html; charset=utf-8'),
+    '/index.html': ('index.html', 'text/html; charset=utf-8'),
+    '/super_likes.html': ('super_likes.html', 'text/html; charset=utf-8'),
+    '/likes': ('super_likes.html', 'text/html; charset=utf-8'),
+}
+VIDEO_HOST = re.compile(r'^https://video\.twimg\.com/[\w\-./%]+\.mp4(\?[\w=&\-.]*)?$')
+
+
+# ---------------------------------------------------------------- archive ---
+def load_ids():
+    files = glob.glob('twitter-*/data/like.js')
+    if not files:
+        print('!! no twitter-*/data/like.js found')
+        return []
+    with open(files[0], encoding='utf-8') as f:
+        raw = f.read()
+    raw = raw[raw.index('['):]
+    ids = [x['like']['tweetId'] for x in json.loads(raw)]
+    print(f'loaded {len(ids)} liked tweet ids from {files[0]}')
+    return ids
+
+
+IDS = load_ids()
+
+# ------------------------------------------------------------------ cache ---
+cache_lock = threading.Lock()
+cache = {}        # id -> compact record dict, or None (no playable video)
+cache_dirty = 0
+
+os.makedirs(DATA_DIR, exist_ok=True)
+try:
+    with open(CACHE_FILE, encoding='utf-8') as f:
+        cache = json.load(f)
+    print(f'cache: {len(cache)} entries, '
+          f'{sum(1 for v in cache.values() if v)} videos')
+except FileNotFoundError:
+    pass
+except Exception as e:
+    print('cache load failed, starting fresh:', e)
+
+
+def save_cache(force=False):
+    global cache_dirty
+    with cache_lock:
+        if not cache_dirty or (not force and cache_dirty < 20):
             return
-            
-        # Proxy tweet lookups: vxtwitter now serves a Cloudflare challenge to
-        # browser user agents, so the browser can't call it directly.
-        m = re.fullmatch(r'/tweet/(\d{1,25})', self.path)
-        if m:
-            req = urllib.request.Request(
-                f'https://api.vxtwitter.com/Twitter/status/{m.group(1)}',
-                headers={'User-Agent': 'BlessedScroll/1.0'})
-            try:
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    status, body = r.status, r.read()
-            except urllib.error.HTTPError as e:
-                status, body = e.code, b'{}'
-            except Exception as e:
-                print("Error proxying tweet:", e)
-                status, body = 502, b'{}'
-            self.send_response(status)
-            self.send_header('Content-type', 'application/json')
+        snapshot = json.dumps(cache, separators=(',', ':'))
+        cache_dirty = 0
+    tmp = CACHE_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(snapshot)
+    os.replace(tmp, CACHE_FILE)
+
+
+def _rec(tid, video, thumb, w, h, gif, text, user, name, date, likes, rts, replies, url):
+    return {'id': tid, 'video': video, 'thumb': thumb or '', 'w': w, 'h': h, 'gif': gif,
+            'text': text or '', 'user': user or '', 'name': name or '', 'date': date,
+            'likes': likes or 0, 'retweets': rts or 0, 'replies': replies or 0, 'url': url or ''}
+
+
+def compact_vx(tid, d):
+    for m in d.get('media_extended') or []:
+        url = m.get('url') or ''
+        if m.get('type') in ('video', 'gif') and VIDEO_HOST.match(url):
+            size = m.get('size') or {}
+            return _rec(tid, url, m.get('thumbnail_url'), size.get('width'), size.get('height'),
+                        m.get('type') == 'gif', d.get('text'), d.get('user_screen_name'),
+                        d.get('user_name'), d.get('date_epoch'), d.get('likes'),
+                        d.get('retweets'), d.get('replies'), d.get('tweetURL'))
+    return None
+
+
+def compact_fx(tid, d):
+    t = d.get('tweet') or {}
+    a = t.get('author') or {}
+    for m in (t.get('media') or {}).get('videos') or []:
+        url = m.get('url') or ''
+        if VIDEO_HOST.match(url):
+            return _rec(tid, url, m.get('thumbnail_url'), m.get('width'), m.get('height'),
+                        m.get('type') == 'gif', t.get('text'), a.get('screen_name'),
+                        a.get('name'), t.get('created_timestamp'), t.get('likes'),
+                        t.get('retweets'), t.get('replies'), t.get('url'))
+    return None
+
+
+class Transient(Exception):
+    """Upstream hiccup: don't cache, try again later."""
+
+
+class Provider:
+    """One lookup API with its own polite pacing and 429 cooldown."""
+    def __init__(self, name, url, parse, gone_codes):
+        self.name, self.url, self.parse, self.gone = name, url, parse, gone_codes
+        self.lock = threading.Lock()
+        self.next_at = 0.0
+        self.cool_until = 0.0
+        self.penalty = 15
+
+    def cooling(self):
+        return max(0.0, self.cool_until - time.time())
+
+    def fetch(self, tid):
+        with self.lock:                        # space requests >= 0.35s apart
+            wait = self.next_at - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            self.next_at = time.time() + 0.35
+        req = urllib.request.Request(self.url.format(tid), headers={'User-Agent': UA})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                body = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in self.gone:
+                return None
+            if e.code == 429:
+                self.cool_until = time.time() + self.penalty
+                print(f'{self.name}: 429, cooling {self.penalty}s')
+                self.penalty = min(self.penalty * 2, 600)
+            raise Transient(f'{self.name} HTTP {e.code}')
+        except ValueError:
+            return None
+        except Exception as e:
+            raise Transient(f'{self.name} {e}')
+        self.penalty = 15
+        return self.parse(tid, body)
+
+
+PROVIDERS = [
+    Provider('fxtwitter', 'https://api.fxtwitter.com/status/{}', compact_fx, (404, 401, 410)),
+    Provider('vxtwitter', 'https://api.vxtwitter.com/Twitter/status/{}', compact_vx, (404, 401, 410)),
+]
+
+
+def cooldown_left():
+    return min(p.cooling() for p in PROVIDERS)
+
+
+def lookup(tid):
+    """Return compact record or None (no playable video). Raises Transient."""
+    global cache_dirty
+    with cache_lock:
+        if tid in cache:
+            return cache[tid]
+    last = None
+    for p in sorted(PROVIDERS, key=lambda p: p.cooling()):
+        if p.cooling():
+            continue
+        try:
+            rec = p.fetch(tid)
+            break
+        except Transient as e:
+            last = e
+    else:
+        raise last or Transient('all providers cooling down')
+    with cache_lock:
+        cache[tid] = rec
+        cache_dirty += 1
+    return rec
+
+
+# ------------------------------------------------------------------- pool ---
+pool = collections.deque()
+pool_cv = threading.Condition()
+
+
+def worker():
+    backoff = 1
+    while True:
+        with pool_cv:
+            while len(pool) >= POOL_TARGET:
+                pool_cv.wait()
+        if not IDS:
+            time.sleep(60)
+            continue
+        tid = random.choice(IDS)
+        try:
+            rec = lookup(tid)
+            backoff = 1
+        except Transient as e:
+            wait = max(backoff, cooldown_left())
+            print(f'lookup {tid}: {e}; waiting {wait:.0f}s')
+            time.sleep(wait)
+            backoff = min(backoff * 2, 30)
+            continue
+        if rec:
+            with pool_cv:
+                if all(p['id'] != tid for p in pool):
+                    pool.append(rec)
+                    pool_cv.notify_all()
+        save_cache()
+
+
+def saver():
+    while True:
+        time.sleep(30)
+        try:
+            save_cache(force=True)
+        except Exception as e:
+            print('cache save failed:', e)
+
+
+def take_random(timeout=25):
+    deadline = time.time() + timeout
+    with pool_cv:
+        while not pool:
+            left = deadline - time.time()
+            if left <= 0:
+                return None
+            pool_cv.wait(left)
+        rec = pool.popleft()
+        pool_cv.notify_all()
+        return rec
+
+
+# ------------------------------------------------------------------ likes ---
+likes_lock = threading.Lock()
+
+
+def read_likes():
+    if not os.path.exists(LIKES_FILE):
+        return []
+    with open(LIKES_FILE, encoding='utf-8') as f:
+        return [l.strip() for l in f if l.strip()]
+
+
+def tweet_id_of(url):
+    m = re.search(r'/status/(\d+)', url or '')
+    return m.group(1) if m else None
+
+
+# ------------------------------------------------------------------- http ---
+def safe_filename(rec):
+    user = re.sub(r'[^A-Za-z0-9_]', '', rec.get('user') or '') or 'video'
+    return f"{user}_{rec['id']}.mp4"
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+    server_version = 'BlessedScroll'
+
+    def log_message(self, fmt, *args):
+        if not self.path.startswith('/random'):
+            super().log_message(fmt, *args)
+
+    def send_json(self, obj, status=200):
+        body = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_empty(self, status):
+        self.send_response(status)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def do_GET(self):
+        path = self.path.split('?', 1)[0]
+
+        if path in STATIC:
+            fname, ctype = STATIC[path]
+            with open(fname, 'rb') as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', ctype)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-cache')
             self.end_headers()
             self.wfile.write(body)
             return
 
-        # Dynamically serve like.js from the messy Twitter archive folder!
-        if self.path == '/like.js':
-            like_files = glob.glob('twitter-*/data/like.js')
-            if like_files:
-                try:
-                    with open(like_files[0], 'rb') as f:
-                        content = f.read()
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/javascript')
-                    self.end_headers()
-                    self.wfile.write(content)
-                    return
-                except Exception as e:
-                    print("Error reading like.js:", e)
-            
-            # Not found
-            self.send_response(404)
+        if path == '/random':
+            rec = take_random()
+            if rec:
+                return self.send_json(rec)
+            return self.send_json({'error': 'no videos ready yet'}, 503)
+
+        if path == '/get_likes':
+            with likes_lock:
+                return self.send_json(read_likes())
+
+        if path == '/status':
+            with cache_lock:
+                n = len(cache)
+                v = sum(1 for x in cache.values() if x)
+            return self.send_json({'ids': len(IDS), 'cached': n, 'videos': v,
+                                   'pool': len(pool)})
+
+        m = re.fullmatch(r'/tweet/(\d{1,25})', path)
+        if m:
+            try:
+                rec = lookup(m.group(1))
+            except Transient:
+                return self.send_json({'error': 'upstream unavailable'}, 502)
+            if not rec:
+                return self.send_json({'error': 'no video'}, 404)
+            return self.send_json(rec)
+
+        m = re.fullmatch(r'/dl/(\d{1,25})', path)
+        if m:
+            return self.download(m.group(1))
+
+        self.send_empty(404)
+
+    def download(self, tid):
+        try:
+            rec = lookup(tid)
+        except Transient:
+            return self.send_empty(502)
+        if not rec or not VIDEO_HOST.match(rec['video']):
+            return self.send_empty(404)
+        req = urllib.request.Request(rec['video'], headers={'User-Agent': UA})
+        try:
+            up = urllib.request.urlopen(req, timeout=20)
+        except Exception as e:
+            print('download upstream failed:', e)
+            return self.send_empty(502)
+        with up:
+            self.send_response(200)
+            self.send_header('Content-Type', 'video/mp4')
+            length = up.headers.get('Content-Length')
+            if length:
+                self.send_header('Content-Length', length)
+            else:
+                self.close_connection = True
+            self.send_header('Content-Disposition',
+                             f'attachment; filename="{safe_filename(rec)}"')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
-            self.wfile.write(b"// like.js not found in any twitter-*/data/ folder")
-        else:
-            # Serve index.html and other files normally
-            super().do_GET()
+            try:
+                while True:
+                    chunk = up.read(256 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def do_POST(self):
-        if self.path == '/superlike':
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            try:
-                data = json.loads(post_data)
-                tweet_url = data.get('url')
-                action = data.get('action', 'add')
-                
-                if tweet_url:
-                    if action == 'add':
-                        # Append to server-side file
-                        with open('super_likes.txt', 'a') as f:
-                            f.write(tweet_url + '\n')
-                    elif action == 'remove':
-                        # Remove from server-side file
-                        if os.path.exists('super_likes.txt'):
-                            with open('super_likes.txt', 'r') as f:
-                                lines = f.readlines()
-                            with open('super_likes.txt', 'w') as f:
-                                for line in lines:
-                                    if line.strip() != tweet_url.strip():
-                                        f.write(line)
+        if self.path != '/superlike':
+            return self.send_empty(404)
+        try:
+            n = int(self.headers.get('Content-Length', 0))
+            if n > 4096:
+                return self.send_empty(413)
+            data = json.loads(self.rfile.read(n))
+            url = str(data.get('url') or '').strip()
+            action = data.get('action', 'add')
+            if not tweet_id_of(url) or not url.startswith('https://') or '\n' in url:
+                return self.send_empty(400)
+        except Exception:
+            return self.send_empty(400)
+        with likes_lock:
+            likes = read_likes()
+            if action == 'add' and url not in likes:
+                likes.append(url)
+            elif action == 'remove':
+                likes = [l for l in likes if l != url]
+            tmp = LIKES_FILE + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                f.write(''.join(l + '\n' for l in likes))
+            os.replace(tmp, LIKES_FILE)
+        self.send_json({'status': 'success'})
 
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(b'{"status":"success"}')
-                    return
-            except Exception as e:
-                print("Error processing like:", e)
-            
-            self.send_response(400)
-            self.end_headers()
-        else:
-            self.send_response(404)
-            self.end_headers()
 
-PORT = 80
-print(f"BlessedScroll Server booting on port {PORT}...")
-socketserver.ThreadingTCPServer.allow_reuse_address = True
-socketserver.ThreadingTCPServer.daemon_threads = True
-with socketserver.ThreadingTCPServer(("", PORT), Handler) as httpd:
-    httpd.serve_forever()
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+if __name__ == '__main__':
+    for _ in range(WORKERS):
+        threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=saver, daemon=True).start()
+    print(f'BlessedScroll on :{PORT}')
+    Server(('', PORT), Handler).serve_forever()

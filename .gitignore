@@ -7,3 +7,7 @@ data/
 !popup.js
 p90zone*.html
 __pycache__/
+!deploy.mjs
+super_likes.txt
+.deploy-bak/
+*.tmp

@@ -1,203 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="referrer" content="no-referrer">
-    <title>BlessedScroll | Super Likes</title>
-    <style>
-        body {
-            background-color: #0a0a0a;
-            color: #0f0;
-            font-family: 'Courier New', Courier, monospace;
-            margin: 0;
-            padding: 20px;
-        }
-
-        #header {
-            text-align: center;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #0f0;
-            margin-bottom: 20px;
-            box-shadow: 0 0 10px rgba(0,255,0,0.2);
-        }
-        #header h1 { margin: 0; font-size: 24px; text-shadow: 0 0 5px #0f0; }
-        
-        .nav-btn {
-            display: inline-block;
-            margin-top: 10px;
-            text-decoration: none;
-            background: rgba(0, 0, 0, 0.7);
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 8px 12px;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-        .nav-btn:hover { background: #0f0; color: #000; }
-
-        #grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            padding-bottom: 50px;
-        }
-
-        .card {
-            background: #111;
-            border: 1px solid #333;
-            border-radius: 8px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            transition: border-color 0.2s;
-        }
-        .card:hover { border-color: #0f0; }
-
-        .card video {
-            width: 100%;
-            height: 300px;
-            object-fit: cover;
-            background: #000;
-        }
-
-        .card-info {
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            flex-grow: 1;
-        }
-        
-        .card-text {
-            color: #ccc;
-            font-size: 13px;
-            margin-bottom: 15px;
-            word-wrap: break-word;
-        }
-
-        .btn {
-            background: rgba(0, 0, 0, 0.7);
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 8px;
-            font-family: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 5px;
-            font-size: 13px;
-            text-align: center;
-        }
-        .btn.liked { background: #ff0055; color: #fff; border-color: #ff0055; }
-        .btn.liked:hover { background: #000; color: #ff0055; }
-
-        #loading { text-align: center; font-size: 20px; animation: blink 1s infinite; padding: 50px; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b0d10">
+<title>BlessedScroll · Likes</title>
+<style>
+  :root {
+    --bg: #0b0d10; --surface: #151820; --surface-2: #1c2029; --border: rgba(255,255,255,.07);
+    --text: #eceef3; --muted: #a3abba; --accent: #8fd6b4; --like: #ff6b9a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: rgba(11,13,16,.85); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 18px; font-weight: 700; }
+  h1 small { color: var(--muted); font-weight: 500; font-size: 14px; margin-left: 6px; }
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+    background: var(--surface-2); color: var(--text); text-decoration: none; font-weight: 600; font-size: 14px;
+    border: 1px solid var(--border);
+  }
+  main {
+    max-width: 1200px; margin: 0 auto;
+    padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 32px);
+    display: grid; gap: 16px; grid-template-columns: 1fr;
+  }
+  @media (min-width: 640px) { main { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 980px) { main { grid-template-columns: repeat(3, 1fr); } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+    display: flex; flex-direction: column; transition: opacity .2s; }
+  .card video { width: 100%; aspect-ratio: 4 / 5; object-fit: contain; background: #000; display: block; }
+  .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .who { font-weight: 650; font-size: 14px; }
+  .who span { color: var(--muted); font-weight: 400; }
+  .text { color: #d5d9e1; font-size: 14px; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .row { display: flex; gap: 8px; margin-top: auto; }
+  .btn {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 44px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
+    text-decoration: none; cursor: pointer;
+  }
+  .btn svg { width: 18px; height: 18px; }
+  .btn.unlike { color: var(--like); }
+  .btn:disabled { opacity: .5; }
+  .state { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 60px 16px; }
+  .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15);
+    border-top-color: var(--accent); animation: spin .8s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .gone { opacity: .6; }
+  .gone .ph { aspect-ratio: 4 / 5; display: grid; place-items: center; color: var(--muted); background: #000; font-size: 14px; }
+</style>
 </head>
 <body>
+  <header>
+    <h1>Super likes <small id="count"></small></h1>
+    <a class="back" href="/">← Scroll</a>
+  </header>
+  <main id="grid">
+    <div class="state" id="state"><div class="spinner"></div>Loading your likes…</div>
+  </main>
 
-    <div id="header">
-        <h1>[ LIKED VIDEO ARCHIVE ]</h1>
-        <a href="index.html" class="nav-btn">← BACK TO SCROLL</a>
+<template id="card-tpl">
+  <article class="card">
+    <video controls playsinline preload="none"></video>
+    <div class="body">
+      <div class="who"></div>
+      <div class="text"></div>
+      <div class="row">
+        <a class="btn dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>Save</a>
+        <a class="btn open" target="_blank" rel="noopener noreferrer">Open</a>
+        <button class="btn unlike"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>Unlike</button>
+      </div>
     </div>
+  </article>
+</template>
 
-    <div id="loading">[ FETCHING ARCHIVE DATA... ]</div>
-    <div id="grid"></div>
+<script>
+(async () => {
+  const grid = document.getElementById('grid');
+  const state = document.getElementById('state');
+  const tpl = document.getElementById('card-tpl');
+  const tid = u => { const m = /\/status\/(\d+)/.exec(u || ''); return m && m[1]; };
 
-    <script>
-        const loading = document.getElementById('loading');
-        const grid = document.getElementById('grid');
-        
-        // Sync local storage with server just in case
-        let superLikes = JSON.parse(localStorage.getItem('blessed_super_likes')) || [];
+  let urls;
+  try {
+    urls = await (await fetch('/get_likes', { cache: 'no-store' })).json();
+  } catch {
+    state.textContent = 'Couldn’t reach the server.'; return;
+  }
+  urls = urls.slice().reverse();   // newest first
+  const setCount = () => document.getElementById('count').textContent = grid.querySelectorAll('.card').length || '';
+  if (!urls.length) { state.textContent = 'No super likes yet — hit ♥ on something good.'; return; }
+  state.remove();
 
-        async function loadLikes() {
-            try {
-                const res = await fetch('/get_likes');
-                const urls = await res.json();
-                
-                if (urls.length === 0) {
-                    loading.innerText = "[ NO SUPER LIKES FOUND YET ]";
-                    loading.style.animation = "none";
-                    return;
-                }
+  // Create cards in order now, fill them as lookups come back (6 at a time).
+  const cards = urls.map(url => {
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    const id = tid(url);
+    node.querySelector('.who').textContent = 'Loading…';
+    node.querySelector('.open').href = url;
+    node.querySelector('.dl').href = '/dl/' + id;
+    const btn = node.querySelector('.unlike');
+    btn.onclick = async () => {
+      btn.disabled = true; node.style.opacity = .4;
+      try {
+        const r = await fetch('/superlike', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'remove', url }) });
+        if (!r.ok) throw 0;
+        node.remove(); setCount();
+      } catch { btn.disabled = false; node.style.opacity = 1; }
+    };
+    grid.append(node);
+    return { node, id };
+  });
+  setCount();
 
-                loading.style.display = 'none';
-
-                for (const url of urls) {
-                    const id = url.split('/').pop();
-                    
-                    try {
-                        const vRes = await fetch(`https://api.vxtwitter.com/Twitter/status/${id}`);
-                        if (!vRes.ok) continue;
-                        
-                        const data = await vRes.json();
-                        
-                        if (data.hasMedia && data.media_extended && data.media_extended.length > 0) {
-                            const media = data.media_extended[0];
-                            if ((media.type === 'video' || media.type === 'gif') && media.url.includes('.mp4')) {
-                                
-                                const card = document.createElement('div');
-                                card.className = 'card';
-                                
-                                let caption = data.text || "(No caption)";
-                                if (caption.length > 80) caption = caption.substring(0, 80) + '...';
-
-                                card.innerHTML = `
-                                    <video src="${media.url}" poster="${media.thumbnail_url || ''}" controls playsinline preload="none"></video>
-                                    <div class="card-info">
-                                        <div class="card-text">${caption}</div>
-                                        <button class="btn liked" onclick="unlike(this, '${id}', '${url}')">♥ UNLIKE</button>
-                                    </div>
-                                `;
-                                grid.appendChild(card);
-                            }
-                        }
-                    } catch (e) {
-                        console.error(`Failed to load tweet ${id}`, e);
-                    }
-                }
-                
-                if (grid.children.length === 0) {
-                    grid.innerHTML = "<h2 style='text-align:center; width:100%;'>No active videos found. They may have been deleted by the author.</h2>";
-                }
-            } catch (err) {
-                loading.innerText = "[ ERROR CONNECTING TO SERVER ]";
-                console.error(err);
-            }
-        }
-
-        async function unlike(btnElement, id, url) {
-            // Update UI instantly
-            const card = btnElement.closest('.card');
-            card.style.opacity = '0.3';
-            btnElement.innerText = "REMOVING...";
-            btnElement.disabled = true;
-
-            // Remove from local storage
-            superLikes = superLikes.filter(item => item !== id);
-            localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
-
-            // Remove from server
-            try {
-                await fetch('/superlike', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'remove', url: url })
-                });
-                // Remove from DOM
-                card.remove();
-            } catch (e) {
-                console.error("Failed to unlike on server", e);
-                btnElement.innerText = "ERROR";
-            }
-        }
-
-        loadLikes();
-    </script>
+  let i = 0;
+  async function worker() {
+    while (i < cards.length) {
+      const { node, id } = cards[i++];
+      const v = node.querySelector('video');
+      try {
+        const r = await fetch('/tweet/' + id);
+        if (!r.ok) throw r.status;
+        const rec = await r.json();
+        v.poster = rec.thumb || '';
+        v.src = rec.video;
+        const who = node.querySelector('.who');
+        who.textContent = rec.name || '@' + rec.user;
+        const s = document.createElement('span'); s.textContent = '  @' + rec.user; who.append(s);
+        node.querySelector('.text').textContent = (rec.text || '').replace(/\s*https:\/\/t\.co\/\w+\s*$/, '');
+      } catch (e) {
+        node.classList.add('gone');
+        const ph = document.createElement('div'); ph.className = 'ph';
+        ph.textContent = e === 404 ? 'Video no longer available' : 'Couldn’t load right now';
+        v.replaceWith(ph);
+        node.querySelector('.who').textContent = 'Unavailable';
+        node.querySelector('.dl').hidden = true;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: 6 }, worker));
+})();
+</script>
 </body>
 </html>

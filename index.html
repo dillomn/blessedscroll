@@ -1,287 +1,461 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="referrer" content="no-referrer">
-    <title>BlessedScroll</title>
-    <style>
-        body {
-            background-color: #0a0a0a;
-            color: #0f0;
-            font-family: 'Courier New', Courier, monospace;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            overflow: hidden;
-        }
-        
-        #video-container {
-            width: 100%;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
-        video {
-            max-width: 100%;
-            max-height: 100vh;
-            outline: none;
-            display: none;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>BlessedScroll</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --text: #eceef3;
+    --muted: #a3abba;
+    --accent: #8fd6b4;
+    --like: #ff6b9a;
+    --glass: rgba(22, 25, 32, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden; overscroll-behavior: none;
+  }
+  body { position: fixed; inset: 0; }
 
-        /* UI Overlays */
-        #header {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 10;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 1px solid #0f0;
-            cursor: pointer;
-            user-select: none;
-            box-shadow: 0 0 10px rgba(0,255,0,0.2);
-        }
-        #header:hover { background: rgba(0, 20, 0, 0.9); }
-        #header h1 { margin: 0; font-size: 20px; letter-spacing: 2px; text-shadow: 0 0 5px #0f0; }
-        #header p { margin: 5px 0 0; font-size: 12px; color: #aaa; }
+  .stage { position: absolute; inset: 0; background: #000; touch-action: pan-x pinch-zoom; }
+  .stage video {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; background: #000;
+    opacity: 0; transition: opacity .18s ease;
+  }
+  .stage video.active { opacity: 1; }
 
-        #post-info {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            z-index: 10;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #0f0;
-            max-width: 400px;
-            display: none;
-            box-shadow: 0 0 10px rgba(0,255,0,0.2);
-        }
-        
-        #post-text { font-size: 14px; color: #fff; margin-bottom: 10px; word-wrap: break-word; }
-        #post-date { font-size: 10px; color: #888; margin-bottom: 5px; }
-        #post-stats { font-size: 12px; color: #0f0; font-weight: bold; margin-bottom: 10px; }
-        #post-link a { color: #00aaff; text-decoration: none; font-size: 12px; }
-        #post-link a:hover { text-decoration: underline; }
+  /* top bar */
+  .top {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 5;
+    padding: calc(var(--safe-t) + 12px) calc(var(--safe-r) + 16px) 28px calc(var(--safe-l) + 16px);
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(0,0,0,.55), transparent);
+    pointer-events: none;
+  }
+  .top > * { pointer-events: auto; }
+  .brand { font-weight: 700; letter-spacing: .3px; font-size: 17px; }
+  .brand span { color: var(--accent); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 999px; color: var(--text); text-decoration: none;
+    background: var(--glass); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    font-size: 14px; font-weight: 600;
+  }
+  .pill svg { width: 16px; height: 16px; color: var(--like); }
 
-        /* Action Buttons */
-        #actions {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+  /* bottom info */
+  .info {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+    padding: 60px calc(var(--safe-r) + 88px) calc(var(--safe-b) + 22px) calc(var(--safe-l) + 16px);
+    background: linear-gradient(to top, rgba(0,0,0,.75), rgba(0,0,0,.35) 60%, transparent);
+    pointer-events: none;
+  }
+  .info > * { pointer-events: auto; }
+  .who { font-weight: 650; font-size: 15px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .who .date { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .caption {
+    margin-top: 6px; font-size: 14.5px; color: #dfe3ea; white-space: pre-wrap; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    cursor: pointer; max-width: 640px;
+  }
+  .caption.open { -webkit-line-clamp: unset; max-height: 40vh; overflow-y: auto; }
+  .stats { margin-top: 8px; color: var(--muted); font-size: 13px; display: flex; gap: 14px; }
 
-        .btn {
-            background: rgba(0, 0, 0, 0.7);
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 10px 15px;
-            font-family: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 5px;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-        .btn:hover { background: #0f0; color: #000; }
-        .btn.liked { background: #ff0055; color: #fff; border-color: #ff0055; box-shadow: 0 0 10px #ff0055; }
+  /* action rail */
+  .rail {
+    position: absolute; z-index: 6;
+    right: calc(var(--safe-r) + 12px); bottom: calc(var(--safe-b) + 22px);
+    display: flex; flex-direction: column; gap: 14px; align-items: center;
+  }
+  .act {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: 0; padding: 0; color: var(--text); cursor: pointer;
+    font: inherit; font-size: 11.5px; font-weight: 600; text-decoration: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,.6);
+  }
+  .act .ic {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--glass); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    transition: transform .12s ease, background .15s;
+  }
+  .act:active .ic { transform: scale(.9); }
+  .act svg { width: 24px; height: 24px; }
+  .act.liked .ic { background: rgba(255,107,154,.22); border-color: rgba(255,107,154,.5); }
+  .act.liked svg { color: var(--like); fill: var(--like); }
+  .act.next .ic { background: rgba(143,214,180,.2); border-color: rgba(143,214,180,.45); }
+  .act.busy { opacity: .55; pointer-events: none; }
+  @media (hover: hover) { .act:hover .ic { background: rgba(40,44,54,.75); } }
 
-        #loading {
-            position: absolute;
-            font-size: 20px;
-            animation: blink 1s infinite;
-        }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  /* progress */
+  .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 7; background: rgba(255,255,255,.1); }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); }
 
-    </style>
+  /* centre states */
+  .center {
+    position: absolute; inset: 0; z-index: 3; display: grid; place-items: center;
+    pointer-events: none; text-align: center; padding: 24px;
+  }
+  .spinner {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.15); border-top-color: var(--accent);
+    animation: spin .8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .center p { margin: 0; color: var(--muted); font-size: 14px; }
+  .bigicon {
+    width: 76px; height: 76px; border-radius: 50%; background: rgba(0,0,0,.45);
+    display: grid; place-items: center;
+  }
+  .bigicon svg { width: 34px; height: 34px; }
+  .heart-pop svg { width: 96px; height: 96px; color: var(--like); fill: var(--like);
+    filter: drop-shadow(0 4px 18px rgba(0,0,0,.5)); animation: pop .7s ease forwards; }
+  @keyframes pop { 0% { transform: scale(.4); opacity: 0 } 25% { transform: scale(1.15); opacity: 1 }
+    60% { transform: scale(1); opacity: 1 } 100% { transform: scale(1); opacity: 0 } }
+
+  .toast {
+    position: absolute; z-index: 9; left: 50%; transform: translateX(-50%);
+    top: calc(var(--safe-t) + 64px); max-width: min(92vw, 420px);
+    background: rgba(28, 31, 40, .92); border: 1px solid var(--glass-border);
+    padding: 10px 14px; border-radius: 12px; font-size: 13.5px; text-align: center;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .keys { display: none; }
+  @media (hover: hover) and (min-width: 900px) {
+    .keys { display: block; position: absolute; z-index: 5; left: calc(var(--safe-l) + 16px);
+      top: calc(var(--safe-t) + 52px); color: var(--muted); font-size: 12px; }
+    .keys b { color: var(--text); font-weight: 600; }
+  }
+</style>
 </head>
 <body>
+  <div class="stage" id="stage">
+    <video playsinline muted loop preload="auto"></video>
+    <video playsinline muted loop preload="auto"></video>
+  </div>
 
-    <!-- Top Left Header (Click to Reload) -->
-    <div id="header" onclick="loadRandomVideo()">
-        <h1>[ BlessedScroll ]</h1>
-        <p>Press <strong>[R]</strong> or click here to roll.</p>
-    </div>
+  <div class="center" id="loader"><div><div class="spinner"></div><p id="loader-msg">Finding a video…</p></div></div>
+  <div class="center" id="paused" hidden><div class="bigicon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div></div>
+  <div class="center heart-pop" id="heart" hidden><svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg></div>
 
-    <!-- Top Right Actions -->
-    <div id="actions">
-        <button id="like-btn" class="btn" onclick="toggleSuperLike()">♥ SUPER LIKE</button>
-        <a href="super_likes.html" class="btn" style="text-align: center; text-decoration: none;">★ VIEW LIKES</a>
-    </div>
+  <header class="top">
+    <div class="brand">Blessed<span>Scroll</span></div>
+    <a class="pill" href="/likes"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg><span id="like-count">Likes</span></a>
+  </header>
+  <div class="keys"><b>R</b>/<b>→</b> next · <b>Space</b> pause · <b>L</b> like · <b>D</b> save · <b>M</b> sound</div>
 
-    <!-- Bottom Left Metadata Overlay -->
-    <div id="post-info">
-        <div id="post-date"></div>
-        <div id="post-text"></div>
-        <div id="post-stats"></div>
-        <div id="post-link"></div>
-    </div>
+  <section class="info" id="info" hidden>
+    <div class="who"><span id="user"></span><span class="date" id="date"></span></div>
+    <div class="caption" id="caption"></div>
+    <div class="stats" id="stats"></div>
+  </section>
 
-    <div id="loading">[ BOOTING ARCHIVE... ]</div>
-    
-    <div id="video-container">
-        <video id="video-video" controls playsinline muted></video>
-    </div>
+  <nav class="rail">
+    <button class="act" id="btn-like" aria-label="Super like">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg></span>
+      <span id="like-label">Like</span>
+    </button>
+    <a class="act" id="btn-dl" aria-label="Save video" href="#">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg></span>
+      <span>Save</span>
+    </a>
+    <button class="act" id="btn-sound" aria-label="Toggle sound">
+      <span class="ic" id="sound-ic"></span>
+      <span id="sound-label">Sound</span>
+    </button>
+    <a class="act" id="btn-open" aria-label="Open on X" href="#" target="_blank" rel="noopener noreferrer">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></span>
+      <span>Open</span>
+    </a>
+    <button class="act next" id="btn-next" aria-label="Next video">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></span>
+      <span>Next</span>
+    </button>
+  </nav>
 
-    <!-- Initialize the YTD object BEFORE loading Twitter's script -->
-    <script>
-        window.YTD = { like: {} };
-    </script>
-    
-    <!-- Load the raw Twitter archive data file directly -->
-    <script src="like.js"></script>
+  <div class="progress"><i id="bar"></i></div>
+  <div class="toast" id="toast" hidden></div>
 
-    <script>
-        let tweetIds = [];
-        let currentTweetData = null;
-        let superLikes = JSON.parse(localStorage.getItem('blessed_super_likes')) || [];
-        
-        const videoPlayer = document.getElementById('video-video');
-        const loading = document.getElementById('loading');
-        const postInfo = document.getElementById('post-info');
-        const likeBtn = document.getElementById('like-btn');
-        let isLoading = false;
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const vids = [...document.querySelectorAll('.stage video')];
+  const ICON_MUTED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6m0-6 6 6"/></svg>';
+  const ICON_SOUND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-        // Init: Unmute after first click/key
-        const unlockAudio = () => { videoPlayer.muted = false; };
-        document.body.addEventListener('click', unlockAudio, { once: true });
-        document.body.addEventListener('keydown', unlockAudio, { once: true });
+  let cur = 0;               // index of the active <video>
+  let current = null;        // record being shown
+  let upcoming = null;       // { rec, ready: Promise<boolean> } preloaded in the other <video>
+  let muted = true;
+  let liked = new Set();
+  const likedUrls = new Map();
+  let busy = false;
+  let watchdog = null;
 
-        // Load the archive directly from the global variable created by like.js
-        if (typeof window.YTD !== 'undefined' && window.YTD.like && window.YTD.like.part0) {
-            tweetIds = window.YTD.like.part0.map(item => item.like.tweetId);
-            loadRandomVideo();
-        } else {
-            loading.innerText = "[ ERROR: EXTRACT YOUR TWITTER ARCHIVE FOLDER HERE ]";
-            console.error("Missing twitter-*/data/like.js!");
-        }
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
 
-        function updateUI(data) {
-            currentTweetData = data;
-            
-            // Format stats
-            const likes = data.likes > 999 ? (data.likes/1000).toFixed(1)+'k' : data.likes;
-            const rts = data.retweets > 999 ? (data.retweets/1000).toFixed(1)+'k' : data.retweets;
-            const replies = data.replies > 999 ? (data.replies/1000).toFixed(1)+'k' : data.replies;
-            
-            // Populate Info Box
-            document.getElementById('post-date').innerText = new Date(data.date_epoch * 1000).toLocaleString();
-            document.getElementById('post-text').innerText = data.text || "(No caption)";
-            document.getElementById('post-stats').innerText = `♥ ${likes} | 🔁 ${rts} | 💬 ${replies}`;
-            document.getElementById('post-link').innerHTML = `<a href="${data.tweetURL}" target="_blank">↗ Open Original on Twitter</a>`;
-            postInfo.style.display = 'block';
+  // ---------- helpers
+  const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n || 0);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let toastTimer;
+  function toast(msg, ms = 2600) {
+    const t = $('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, ms);
+  }
+  function loader(msg) {
+    if (msg === false) { $('loader').hidden = true; return; }
+    $('loader-msg').textContent = msg; $('loader').hidden = false;
+  }
+  function tid(url) { const m = /\/status\/(\d+)/.exec(url || ''); return m && m[1]; }
 
-            // Check if already super-liked locally
-            if (superLikes.includes(data.tweetID)) {
-                likeBtn.classList.add('liked');
-                likeBtn.innerText = "♥ SUPER LIKED";
-            } else {
-                likeBtn.classList.remove('liked');
-                likeBtn.innerText = "♡ SUPER LIKE";
-            }
-        }
+  async function fetchRandom() {
+    for (let attempt = 0; ; attempt++) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 30000);
+      try {
+        const r = await fetch('/random', { signal: ctl.signal, cache: 'no-store' });
+        if (r.ok) return await r.json();
+      } catch {}
+      finally { clearTimeout(t); }
+      if (attempt >= 1 && !current) loader('Still looking — the archive lookup is slow right now…');
+      await sleep(Math.min(1000 * 2 ** attempt, 8000));
+    }
+  }
 
-        function toggleSuperLike() {
-            if (!currentTweetData) return;
-            const id = currentTweetData.tweetID;
-            const url = currentTweetData.tweetURL;
+  // Load rec into a <video>; resolves true when it can play, false on error/timeout.
+  function loadInto(v, rec, timeoutMs = 15000) {
+    return new Promise(resolve => {
+      let done = false;
+      const finish = ok => {
+        if (done) return; done = true;
+        v.removeEventListener('canplay', onOk); v.removeEventListener('loadeddata', onOk);
+        v.removeEventListener('error', onErr); clearTimeout(t); resolve(ok);
+      };
+      const onOk = () => finish(true), onErr = () => finish(false);
+      v.addEventListener('canplay', onOk); v.addEventListener('loadeddata', onOk);
+      v.addEventListener('error', onErr);
+      const t = setTimeout(() => finish(false), timeoutMs);
+      v.poster = rec.thumb || '';
+      v.src = rec.video;
+      v.load();
+    });
+  }
 
-            if (superLikes.includes(id)) {
-                // UNLIKE (Remove)
-                superLikes = superLikes.filter(item => item !== id);
-                likeBtn.classList.remove('liked');
-                likeBtn.innerText = "♡ SUPER LIKE";
-                localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
+  function prepareNext() {
+    if (upcoming) return;
+    const v = vids[1 - cur];
+    const slot = { rec: null };
+    slot.ready = (async () => {
+      for (let i = 0; i < 5; i++) {
+        const rec = await fetchRandom();
+        if (upcoming !== slot) return false;
+        slot.rec = rec;
+        if (await loadInto(v, rec)) return true;
+      }
+      return false;
+    })();
+    upcoming = slot;
+  }
 
-                // Send the URL to the server to be removed from the txt file
-                fetch('/superlike', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'remove', url: url })
-                }).catch(err => console.error("Failed to remove from server file", err));
-            } else {
-                // LIKE (Add)
-                superLikes.push(id);
-                likeBtn.classList.add('liked');
-                likeBtn.innerText = "♥ SUPER LIKED";
-                localStorage.setItem('blessed_super_likes', JSON.stringify(superLikes));
+  // ---------- rendering
+  function render(rec) {
+    current = rec;
+    $('info').hidden = false;
+    $('user').textContent = rec.name ? `${rec.name}  @${rec.user}` : '@' + (rec.user || 'unknown');
+    $('date').textContent = rec.date ? new Date(rec.date * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+    const cap = (rec.text || '').replace(/\s*https:\/\/t\.co\/\w+\s*$/, '').trim();
+    $('caption').textContent = cap;
+    $('caption').hidden = !cap;
+    $('caption').classList.remove('open');
+    $('stats').textContent = '';
+    for (const [k, n] of [['♥', rec.likes], ['⟲', rec.retweets], ['💬', rec.replies]]) {
+      const s = document.createElement('span'); s.textContent = `${k} ${fmt(n)}`; $('stats').append(s);
+    }
+    $('btn-dl').href = '/dl/' + rec.id;
+    $('btn-open').href = rec.url || ('https://x.com/i/status/' + rec.id);
+    renderLike();
+  }
+  function renderLike() {
+    const on = current && liked.has(current.id);
+    $('btn-like').classList.toggle('liked', !!on);
+    $('like-label').textContent = on ? 'Liked' : 'Like';
+    $('like-count').textContent = liked.size ? `${liked.size}` : 'Likes';
+  }
+  function renderSound() {
+    $('sound-ic').innerHTML = muted ? ICON_MUTED : ICON_SOUND;
+    $('sound-label').textContent = muted ? 'Muted' : 'Sound';
+  }
 
-                // Send the URL to the server to be appended to the txt file
-                fetch('/superlike', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'add', url: url })
-                }).catch(err => console.error("Failed to save to server file", err));
-            }
-        }
+  // ---------- playback
+  function playActive() {
+    const v = vids[cur];
+    v.muted = muted;
+    const p = v.play();
+    if (p) p.catch(() => {
+      // Unmuted autoplay blocked (no user gesture) → fall back to muted.
+      if (!v.muted) { muted = true; v.muted = true; renderSound(); v.play().catch(() => {}); }
+    });
+    $('paused').hidden = true;
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      if (v.readyState < 3 && !v.paused) { toast('That one stalled — skipping'); next(); }
+    }, 12000);
+  }
 
-        async function loadRandomVideo() {
-            if (isLoading || tweetIds.length === 0) return;
-            isLoading = true;
-            
-            loading.innerText = "[ SCANNING ARCHIVE... ]";
-            loading.style.display = 'block';
-            videoPlayer.style.display = 'none';
-            postInfo.style.display = 'none';
-            videoPlayer.pause();
-            videoPlayer.removeAttribute('src');
+  function show(index, rec) {
+    const old = vids[cur];
+    cur = index;
+    const v = vids[cur];
+    v.classList.add('active');
+    old.classList.remove('active');
+    old.pause();
+    render(rec);
+    loader(false);
+    playActive();
+    // release the old element and preload the following video into it
+    old.removeAttribute('src'); old.removeAttribute('poster'); old.load();
+    upcoming = null;
+    prepareNext();
+  }
 
-            // Instantly reset the Like button for snappy UI
-            likeBtn.classList.remove('liked');
-            likeBtn.innerText = "♡ SUPER LIKE";
-            currentTweetData = null; // Prevent accidental likes during load
+  async function next() {
+    if (busy) return;
+    const slot = upcoming;
+    // fast path: next video is already buffered → swap synchronously (keeps the
+    // user-gesture so iOS lets it play with sound)
+    if (slot && slot.rec && vids[1 - cur].readyState >= 2) {
+      show(1 - cur, slot.rec);
+      return;
+    }
+    busy = true;
+    $('btn-next').classList.add('busy');
+    vids[cur].pause();
+    loader('Finding a video…');
+    try {
+      prepareNext();
+      let ok = await upcoming.ready;
+      while (!ok) {           // 5 broken videos in a row: start a fresh attempt
+        upcoming = null; prepareNext(); ok = await upcoming.ready;
+      }
+      show(1 - cur, upcoming.rec);
+    } finally {
+      busy = false;
+      $('btn-next').classList.remove('busy');
+    }
+  }
 
-            let foundVideo = false;
+  vids.forEach((v, i) => {
+    v.addEventListener('error', () => {
+      if (i === cur && current) { toast('Video unavailable — skipping'); next(); }
+    });
+    v.addEventListener('timeupdate', () => {
+      if (i === cur && v.duration) $('bar').style.width = (100 * v.currentTime / v.duration) + '%';
+    });
+    v.addEventListener('playing', () => { if (i === cur) clearTimeout(watchdog); });
+  });
 
-            while (!foundVideo) {
-                const randomIndex = Math.floor(Math.random() * tweetIds.length);
-                const selectedId = tweetIds[randomIndex];
+  // ---------- actions
+  function setMuted(m) {
+    muted = m; vids[cur].muted = m; renderSound();
+    if (!m && vids[cur].paused) playActive();
+  }
+  function togglePause() {
+    const v = vids[cur];
+    if (!current) return;
+    if (v.paused) { playActive(); } else { v.pause(); $('paused').hidden = false; }
+  }
+  function heartPop() {
+    const h = $('heart'); h.hidden = true; void h.offsetWidth; h.hidden = false;
+    setTimeout(() => h.hidden = true, 700);
+  }
+  async function toggleLike(forceOn) {
+    if (!current) return;
+    const id = current.id;
+    const url = likedUrls.get(id) || current.url || `https://twitter.com/i/status/${id}`;
+    const on = !liked.has(id);
+    if (forceOn && !on) { heartPop(); return; }
+    on ? liked.add(id) : liked.delete(id);
+    if (on) heartPop();
+    renderLike();
+    try {
+      const r = await fetch('/superlike', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: on ? 'add' : 'remove', url }) });
+      if (!r.ok) throw 0;
+      on ? likedUrls.set(id, url) : likedUrls.delete(id);
+    } catch {
+      on ? liked.delete(id) : liked.add(id); renderLike(); toast('Couldn\'t save that like');
+    }
+  }
+  $('btn-like').onclick = () => toggleLike();
+  $('btn-next').onclick = () => next();
+  $('btn-sound').onclick = () => setMuted(!muted);
+  $('caption').onclick = e => { e.stopPropagation(); $('caption').classList.toggle('open'); };
+  $('btn-dl').addEventListener('click', e => {
+    if (!current) { e.preventDefault(); return; }
+    if (isIOS && !store.get('bs_dl_hint')) {
+      store.set('bs_dl_hint', '1');
+      toast('Tap “Download”. It lands in Files › Downloads — open it and tap Share › Save Video to put it in Photos.', 7000);
+    } else {
+      toast('Downloading…', 1800);
+    }
+  });
 
-                try {
-                    const response = await fetch(`/tweet/${selectedId}`);
-                    if (!response.ok) { await new Promise(r => setTimeout(r, 300)); continue; }
+  // tap = pause/play, double tap = like, swipe up = next
+  let lastTap = 0, tapTimer = null, touchY = null, touchT = 0;
+  const stage = $('stage');
+  stage.addEventListener('touchstart', e => { touchY = e.touches[0].clientY; touchT = Date.now(); }, { passive: true });
+  stage.addEventListener('touchend', e => {
+    if (touchY == null) return;
+    const dy = touchY - e.changedTouches[0].clientY; touchY = null;
+    if (dy > 60 && Date.now() - touchT < 600) { e.preventDefault(); clearTimeout(tapTimer); next(); }
+  });
+  stage.addEventListener('click', () => {
+    const now = Date.now();
+    if (now - lastTap < 280) { clearTimeout(tapTimer); lastTap = 0; toggleLike(true); return; }
+    lastTap = now;
+    tapTimer = setTimeout(togglePause, 280);
+  });
 
-                    const data = await response.json();
-                    
-                    if (data.hasMedia && data.media_extended && data.media_extended.length > 0) {
-                        const media = data.media_extended[0];
-                        if ((media.type === 'video' || media.type === 'gif') && media.url.includes('.mp4')) {
-                            videoPlayer.src = media.url;
-                            videoPlayer.load();
-                            updateUI(data);
-                            foundVideo = true;
-                        }
-                    }
-                } catch (err) {
-                    console.error("API error, retrying...", err);
-                    await new Promise(r => setTimeout(r, 1000));
-                }
-            }
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === 'r' || k === 'arrowright' || k === 'arrowdown' || k === 'n') { e.preventDefault(); next(); }
+    else if (k === ' ') { e.preventDefault(); togglePause(); }
+    else if (k === 'l') toggleLike();
+    else if (k === 'm') setMuted(!muted);
+    else if (k === 'd' && current) $('btn-dl').click();
+  });
 
-            loading.style.display = 'none';
-            videoPlayer.style.display = 'block';
-            videoPlayer.play().catch(e => console.log("Autoplay prevented:", e));
-            isLoading = false;
-        }
-
-        document.addEventListener('keydown', function(event) {
-            if (event.key.toLowerCase() === 'r') {
-                loadRandomVideo();
-            }
-        });
-    </script>
+  // ---------- boot
+  renderSound();
+  fetch('/get_likes').then(r => r.json()).then(urls => {
+    for (const u of urls) { const id = tid(u); if (id) { liked.add(id); likedUrls.set(id, u); } }
+    renderLike();
+  }).catch(() => {});
+  next().then(() => { if (muted) toast('Tap Muted to turn sound on', 2200); });
+})();
+</script>
 </body>
 </html>

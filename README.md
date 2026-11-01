@@ -8,16 +8,21 @@ Because Twitter restricts standard API scraping to your last ~3,200 likes, the o
 1. You request your Twitter Data Archive.
 2. Extract the entire `twitter-xxx` folder right into the same directory as `index.html`.
 3. The custom Python server intercepts requests for `like.js`, searches for your extracted folder, and serves the file dynamically.
-4. `index.html` loads the archive directly in the browser, picks a random ID, and queries the `api.vxtwitter.com` proxy to find the raw `.mp4` file.
-5. If the tweet was deleted or doesn't contain a video, it instantly skips and rolls again.
+4. The server reads `like.js` once and keeps a small queue of ready-to-play videos, looked up in the background via `api.fxtwitter.com` (falling back to `api.vxtwitter.com`). Lookups are cached in `data/cache.json`, so rolling gets faster over time.
+5. The page preloads the next video while you watch, so **Next** is instant. Deleted, non-video or broken tweets are skipped automatically.
 6. You get a pure, uninterrupted, full-screen video feed with zero Twitter branding.
 
 ## Features
-* **[R] to Reload:** Press `R` or click the header to instantly load a new video.
+* **Mobile-first:** full-screen player, swipe up / **Next** for a new video, tap to pause, double-tap to like.
+* **Save:** downloads the mp4 (served by `/dl/<id>` as an attachment, so it works on iPhone: it lands in Files › Downloads → Share › Save Video for Photos).
+* **Keyboard:** `R`/`→` next, `Space` pause, `L` like, `D` save, `M` sound.
 * **Super Likes:** Found a video so good you want to save it permanently? Click **SUPER LIKE**. The python backend automatically saves the raw URL to `super_likes.txt` on the server!
 * **Metadata Overlay:** Shows the original caption, date, likes, retweets, and a link back to the original post.
 
 ## Usage
 1. Extract your full `twitter-xxx` archive folder into this repository.
 2. Run `docker compose up -d`. This spins up the lightweight Python server.
-3. Navigate to `http://localhost:9090` and hit `R`.
+3. Navigate to `http://localhost:9090`.
+
+## Deploy (homelab)
+Edit on ORB in `~/blessedscroll`, commit, then `node deploy.mjs` (ships `git archive HEAD` to VM02 and restarts `p90zone`).
