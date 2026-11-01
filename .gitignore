@@ -11,3 +11,5 @@ __pycache__/
 super_likes.txt
 .deploy-bak/
 *.tmp
+tls/
+!save.js

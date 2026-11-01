@@ -61,6 +61,10 @@
     border-top-color: var(--accent); animation: spin .8s linear infinite; margin: 0 auto 12px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .gone { opacity: .6; }
+  .toast { position: fixed; z-index: 9; left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); max-width: min(92vw, 420px);
+    background: rgba(28,31,40,.95); border: 1px solid var(--border); padding: 10px 14px;
+    border-radius: 12px; font-size: 13.5px; text-align: center; }
   .gone .ph { aspect-ratio: 4 / 5; display: grid; place-items: center; color: var(--muted); background: #000; font-size: 14px; }
 </style>
 </head>
@@ -80,7 +84,7 @@
       <div class="who"></div>
       <div class="text"></div>
       <div class="row">
-        <a class="btn dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>Save</a>
+        <a class="btn dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg><span>Save</span></a>
         <a class="btn open" target="_blank" rel="noopener noreferrer">Open</a>
         <button class="btn unlike"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>Unlike</button>
       </div>
@@ -88,8 +92,15 @@
   </article>
 </template>
 
+<div class="toast" id="toast" hidden></div>
+<script src="/save.js"></script>
 <script>
 (async () => {
+  let toastTimer;
+  const toast = (msg, ms = 2600) => {
+    const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, ms);
+  };
   const grid = document.getElementById('grid');
   const state = document.getElementById('state');
   const tpl = document.getElementById('card-tpl');
@@ -137,6 +148,9 @@
         const r = await fetch('/tweet/' + id);
         if (!r.ok) throw r.status;
         const rec = await r.json();
+        const dl = node.querySelector('.dl');
+        dl.onclick = e => BSSave.onClick(e, { id, user: rec.user, toast,
+          setLabel: t => dl.querySelector('span').textContent = t || 'Save' });
         v.poster = rec.thumb || '';
         v.src = rec.video;
         const who = node.querySelector('.who');

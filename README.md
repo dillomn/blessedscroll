@@ -14,7 +14,7 @@ Because Twitter restricts standard API scraping to your last ~3,200 likes, the o
 
 ## Features
 * **Mobile-first:** full-screen player, swipe up / **Next** for a new video, tap to pause, double-tap to like.
-* **Save:** downloads the mp4 (served by `/dl/<id>` as an attachment, so it works on iPhone: it lands in Files › Downloads → Share › Save Video for Photos).
+* **Save:** over HTTPS on a phone, opens the share sheet with the video (**Save Video** → Photos). Elsewhere it downloads the mp4 from `/dl/<id>`.
 * **Keyboard:** `R`/`→` next, `Space` pause, `L` like, `D` save, `M` sound.
 * **Super Likes:** Found a video so good you want to save it permanently? Click **SUPER LIKE**. The python backend automatically saves the raw URL to `super_likes.txt` on the server!
 * **Metadata Overlay:** Shows the original caption, date, likes, retweets, and a link back to the original post.
@@ -23,6 +23,13 @@ Because Twitter restricts standard API scraping to your last ~3,200 likes, the o
 1. Extract your full `twitter-xxx` archive folder into this repository.
 2. Run `docker compose up -d`. This spins up the lightweight Python server.
 3. Navigate to `http://localhost:9090`.
+
+## HTTPS (homelab)
+Served on the same port as http: `https://192.168.1.197:9090` (plain http redirects, except `/setup` and `/ca.crt`).
+The cert comes from a local CA on ORB in `~/.blessedscroll-ca`, name-constrained to `192.168.1.197` only; the iPhone
+trusts it after the one-time steps on `http://192.168.1.197:9090/setup`. HTTPS is what makes **Save** open the share
+sheet (Save Video → Photos). The server cert lasts 397 days (expires 2027-12-03): re-issue it from the same CA
+(see the openssl commands in git history / labdocs) and re-run `node deploy.mjs`. The phone keeps trusting the CA.
 
 ## Deploy (homelab)
 Edit on ORB in `~/blessedscroll`, commit, then `node deploy.mjs` (ships `git archive HEAD` to VM02 and restarts `p90zone`).

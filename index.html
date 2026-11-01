@@ -174,7 +174,7 @@
     </button>
     <a class="act" id="btn-dl" aria-label="Save video" href="#">
       <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg></span>
-      <span>Save</span>
+      <span id="save-label">Save</span>
     </a>
     <button class="act" id="btn-sound" aria-label="Toggle sound">
       <span class="ic" id="sound-ic"></span>
@@ -193,14 +193,13 @@
   <div class="progress"><i id="bar"></i></div>
   <div class="toast" id="toast" hidden></div>
 
+<script src="/save.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const vids = [...document.querySelectorAll('.stage video')];
   const ICON_MUTED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6m0-6 6 6"/></svg>';
   const ICON_SOUND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
-  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   let cur = 0;               // index of the active <video>
   let current = null;        // record being shown
@@ -294,6 +293,7 @@
       const s = document.createElement('span'); s.textContent = `${k} ${fmt(n)}`; $('stats').append(s);
     }
     $('btn-dl').href = '/dl/' + rec.id;
+    $('save-label').textContent = 'Save';
     $('btn-open').href = rec.url || ('https://x.com/i/status/' + rec.id);
     renderLike();
   }
@@ -414,12 +414,9 @@
   $('caption').onclick = e => { e.stopPropagation(); $('caption').classList.toggle('open'); };
   $('btn-dl').addEventListener('click', e => {
     if (!current) { e.preventDefault(); return; }
-    if (isIOS && !store.get('bs_dl_hint')) {
-      store.set('bs_dl_hint', '1');
-      toast('Tap “Download”. It lands in Files › Downloads — open it and tap Share › Save Video to put it in Photos.', 7000);
-    } else {
-      toast('Downloading…', 1800);
-    }
+    const rec = current;
+    BSSave.onClick(e, { id: rec.id, user: rec.user, toast,
+      setLabel: t => { if (current === rec) $('save-label').textContent = t || 'Save'; } });
   });
 
   // tap = pause/play, double tap = like, swipe up = next

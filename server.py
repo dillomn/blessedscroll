@@ -9,6 +9,10 @@
   gets cheaper to roll the more it's used.
 - /dl/<id> streams the mp4 back with Content-Disposition: attachment, so iOS
   Safari offers a real download (cross-origin <a download> is ignored there).
+- HTTPS on the same port (9090) using tls/server.{crt,key}, issued by a local
+  CA that is name-constrained to this IP (see /setup). Plain-HTTP requests
+  get only /ca.crt and /setup, everything else redirects to https://.
+  HTTPS is what lets iOS "Share > Save Video" straight into Photos.
 - Only an explicit set of static files is served; the Twitter archive folder
   (DMs etc.) is NOT reachable over HTTP.
 """
@@ -19,7 +23,9 @@ import json
 import os
 import random
 import re
+import socket
 import socketserver
+import ssl
 import threading
 import time
 import urllib.error
@@ -37,7 +43,26 @@ STATIC = {
     '/index.html': ('index.html', 'text/html; charset=utf-8'),
     '/super_likes.html': ('super_likes.html', 'text/html; charset=utf-8'),
     '/likes': ('super_likes.html', 'text/html; charset=utf-8'),
+    '/setup': ('setup.html', 'text/html; charset=utf-8'),
+    '/save.js': ('save.js', 'text/javascript; charset=utf-8'),
 }
+PLAIN_OK = {'/setup', '/ca.crt'}   # reachable over plain http when TLS is on
+TLS_DIR = 'tls'
+
+
+def make_tls_context():
+    crt, key = os.path.join(TLS_DIR, 'server.crt'), os.path.join(TLS_DIR, 'server.key')
+    if not (os.path.exists(crt) and os.path.exists(key)):
+        print('TLS: no tls/server.crt + server.key, serving plain HTTP only')
+        return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(crt, key)
+    print('TLS: enabled (https and http share the port)')
+    return ctx
+
+
+TLS = make_tls_context()
 VIDEO_HOST = re.compile(r'^https://video\.twimg\.com/[\w\-./%]+\.mp4(\?[\w=&\-.]*)?$')
 
 
@@ -291,8 +316,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', '0')
         self.end_headers()
 
+    def is_https(self):
+        return isinstance(self.connection, ssl.SSLSocket)
+
+    def redirect_to_https(self):
+        host = (self.headers.get('Host') or '').strip()
+        if not re.fullmatch(r'[\w.\-]+(:\d+)?', host):
+            return self.send_empty(400)
+        self.send_response(308)
+        self.send_header('Location', f'https://{host}{self.path}')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def do_GET(self):
         path = self.path.split('?', 1)[0]
+
+        if TLS and not self.is_https() and path not in PLAIN_OK:
+            return self.redirect_to_https()
+
+        if path == '/ca.crt':
+            try:
+                with open(os.path.join(TLS_DIR, 'ca.crt'), 'rb') as f:
+                    body = f.read()
+            except FileNotFoundError:
+                return self.send_empty(404)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/x-x509-ca-cert')
+            self.send_header('Content-Disposition', 'attachment; filename="BlessedScroll-CA.crt"')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if path in STATIC:
             fname, ctype = STATIC[path]
@@ -374,6 +428,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 pass
 
     def do_POST(self):
+        if TLS and not self.is_https():
+            return self.redirect_to_https()
         if self.path != '/superlike':
             return self.send_empty(404)
         try:
@@ -403,6 +459,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def finish_request(self, request, client_address):
+        # Runs in the per-connection thread: sniff the first byte, and if it's a
+        # TLS handshake (0x16) wrap the socket, so http and https share one port.
+        if TLS:
+            try:
+                request.settimeout(10)
+                first = request.recv(1, socket.MSG_PEEK)
+                request.settimeout(None)
+                if first == b'\x16':
+                    request = TLS.wrap_socket(request, server_side=True)
+            except (ssl.SSLError, OSError):
+                return   # handshake refused (e.g. cert not trusted yet) / client gone
+        try:
+            self.RequestHandlerClass(request, client_address, self)
+        finally:
+            if isinstance(request, ssl.SSLSocket):
+                try:
+                    request.close()
+                except OSError:
+                    pass
 
 
 if __name__ == '__main__':

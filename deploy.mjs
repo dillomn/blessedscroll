@@ -12,11 +12,20 @@ const pw = readFileSync('/home/dillon/orb/.env.local', 'utf8')
 if (execSync('git status --porcelain').toString().trim())
   console.warn('!! uncommitted changes are NOT deployed (git archive HEAD)');
 const tar = execSync('git archive --format=tar.gz HEAD');
+
+// TLS: server cert/key + CA cert from ~/.blessedscroll-ca (the CA *key* never leaves ORB).
+// Renew the server cert before it expires (397 days) — see README.
+const CA_DIR = '/home/dillon/.blessedscroll-ca';
+const tls = ['server.crt', 'server.key', 'ca.crt']
+  .map(f => `printf %s ${readFileSync(`${CA_DIR}/${f}`).toString('base64')} | base64 -d > tls/${f}`).join('\n');
 const rev = execSync('git rev-parse --short HEAD').toString().trim();
 
 const remote = `set -e; cd ~/blessedscroll
 mkdir -p .deploy-bak && tar czf .deploy-bak/pre-${rev}-$(date +%Y%m%d-%H%M%S).tgz --exclude=./twitter-* --exclude=./data --exclude=./.git --exclude=./.deploy-bak --exclude='./p90zone*' --exclude=./tweets.json .
 base64 -d | tar xzf -
+mkdir -p tls && chmod 700 tls
+${tls}
+chmod 600 tls/server.key
 git fetch -q origin 2>/dev/null && git reset -q origin/master 2>/dev/null || true
 docker restart p90zone >/dev/null
 for i in $(seq 1 20); do curl -sf localhost:9090/status && exit 0; sleep 1; done
