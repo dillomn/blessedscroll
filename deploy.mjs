@@ -28,7 +28,7 @@ ${tls}
 chmod 600 tls/server.key
 git fetch -q origin 2>/dev/null && git reset -q origin/master 2>/dev/null || true
 docker restart p90zone >/dev/null
-for i in $(seq 1 20); do curl -sf localhost:9090/status && exit 0; sleep 1; done
+for i in $(seq 1 20); do curl -skf https://localhost:9090/status && exit 0; sleep 1; done
 echo "server did not come up"; docker logs --tail 30 p90zone; exit 1`;
 
 const c = new Client();
